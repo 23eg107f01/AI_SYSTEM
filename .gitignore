@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+*.log
+
+# Alembic
+alembic/versions/__pycache__/
+
+# ChromaDB
+chroma_db/
+
+# Environment
+.env
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+.cache/
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Virtual environment
+.venv311/
+.venv/
+venv/
+env/
+
+# VS Code
+.vscode/
+

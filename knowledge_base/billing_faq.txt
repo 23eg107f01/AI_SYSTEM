@@ -1,0 +1,16 @@
+Billing FAQ
+
+Q: What payment methods do you accept?
+A: We accept Visa, Mastercard, American Express, and PayPal. All payments are processed securely.
+
+Q: Why was I charged twice?
+A: Double charges can occur due to a processing error. Please contact support within 7 days and we will issue a full refund for the duplicate charge within 3-5 business days.
+
+Q: How do I cancel my subscription?
+A: You can cancel your subscription at any time from Account Settings > Subscription > Cancel. Your access continues until the end of the billing period.
+
+Q: Can I get a refund?
+A: We offer a 30-day money-back guarantee for all new subscriptions. To request a refund, submit a ticket and our billing team will process it within 5 business days.
+
+Q: How do I update my payment method?
+A: Go to Account Settings > Billing > Payment Method and click Update. Changes take effect on your next billing cycle.

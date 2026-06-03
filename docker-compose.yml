@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  # Redis — session cache and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: aicsa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aicsa-net
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aicsa-backend
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      CHROMA_PATH: /app/chroma_db
+      CHROMA_API_KEY: ${CHROMA_API_KEY}
+      CHROMA_TENANT: ${CHROMA_TENANT}
+      CHROMA_DATABASE: ${CHROMA_DATABASE}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/chroma_db
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - aicsa-net
+
+volumes:
+  redis_data:
+  chroma_data:
+
+networks:
+  aicsa-net:
+    driver: bridge
