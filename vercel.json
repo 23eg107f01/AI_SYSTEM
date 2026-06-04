@@ -1,0 +1,50 @@
+{
+  "buildCommand": "pip install -r backend/requirements.txt && cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "pip install -r backend/requirements.txt && cd frontend && npm install",
+  "env": {
+    "GROQ_API_KEY": "@groq_api_key",
+    "LANGSMITH_API_KEY": "@langsmith_api_key",
+    "LANGSMITH_PROJECT": "AI_SYSTEM",
+    "LANGSMITH_TRACING": "true",
+    "DATABASE_URL": "@database_url",
+    "JWT_SECRET": "@jwt_secret",
+    "CHROMA_API_KEY": "@chroma_api_key",
+    "CHROMA_TENANT": "@chroma_tenant",
+    "CHROMA_DATABASE": "@chroma_database"
+  },
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.11",
+      "memory": 1024,
+      "maxDuration": 30,
+      "includeFiles": "backend/**"
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/index.py",
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "src": "/auth/(.*)",
+      "dest": "/api/index.py",
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    },
+    {
+      "src": "/health(.*)",
+      "dest": "/api/index.py",
+      "methods": ["GET"]
+    },
+    {
+      "src": "/ws(.*)",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/dist/index.html",
+      "status": 200
+    }
+  ]
+}
