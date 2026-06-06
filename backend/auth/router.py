@@ -5,6 +5,7 @@ Auth endpoints:
   POST /auth/refresh
   POST /auth/logout
 """
+import logging
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,13 +33,17 @@ from db.redis_client import (
 )
 from models.user import User
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    logger.info(f"Register attempt for email: {payload.email}")
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
+        logger.warning(f"Register failed: email {payload.email} already registered")
         raise HTTPException(status_code=400, detail="Email already registered")
 
     user = User(
@@ -49,6 +54,7 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    logger.info(f"User registered successfully: id={user.id}, email={user.email}, role={user.role.value}")
     return user
 
 
@@ -58,13 +64,26 @@ async def login(
     db: Session = Depends(get_db),
     redis=Depends(get_redis),
 ):
+    logger.info(f"Login attempt for email: {payload.email}")
     user = db.query(User).filter(User.email == payload.email).first()
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user:
+        logger.warning(f"Login failed: user not found for email {payload.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+    
+    logger.info(f"Found user: id={user.id}, email={user.email}, role={user.role.value}")
+    
+    password_ok = verify_password(payload.password, user.hashed_password)
+    if not password_ok:
+        logger.warning(f"Login failed: incorrect password for email {payload.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
 
+    logger.info(f"Login successful for email {payload.email}")
     access_token = create_access_token(user.id, user.role.value)
     refresh_token = create_refresh_token(user.id, user.role.value)
 

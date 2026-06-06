@@ -14,7 +14,7 @@ export default function RegisterPage() {
     const ok = await register(email, password, "customer");
     if (ok) {
       setSuccess(true);
-      setTimeout(() => navigate("/login"), 1500);
+      setTimeout(() => navigate("/chat"), 1500);
     }
   }
 

@@ -38,6 +38,9 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Database files
+*.db
+
 # Virtual environment
 .venv311/
 .venv/

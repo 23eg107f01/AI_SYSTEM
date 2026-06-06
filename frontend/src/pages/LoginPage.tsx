@@ -2,11 +2,7 @@ import { useState, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
-interface Props {
-  onLogin: () => void;
-}
-
-export default function LoginPage({ onLogin }: Props) {
+export default function LoginPage() {
   const { login, error, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,7 +12,6 @@ export default function LoginPage({ onLogin }: Props) {
     e.preventDefault();
     const ok = await login(email, password);
     if (ok) {
-      onLogin();
       navigate("/chat");
     }
   }

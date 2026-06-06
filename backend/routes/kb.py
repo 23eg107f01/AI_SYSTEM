@@ -16,8 +16,6 @@ from auth import require_admin, get_current_user
 from db.base import get_db, SessionLocal
 from models import User
 from models.ticket import KBDocument
-from services.chroma_client import delete_document_chunks
-from services.ingestion import ingest_document_task
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +48,8 @@ async def upload_kb_document(
     as a non-blocking background task.
     The kb_documents record status changes from 'processing' → 'ready' (or 'error').
     """
+    from services.ingestion import ingest_document_task
+    
     filename = file.filename or "document"
     ext = os.path.splitext(filename)[1].lower()
 
@@ -128,6 +128,8 @@ async def delete_document(
     _: User = Depends(require_admin),
 ):
     """Delete a KB document and all its ChromaDB vector chunks."""
+    from services.chroma_client import delete_document_chunks
+    
     doc = db.query(KBDocument).filter(KBDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")

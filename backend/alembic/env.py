@@ -36,8 +36,13 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
+    # Handle SQLite specific connection args
+    configuration = config.get_section(config.config_ini_section, {})
+    if settings.DATABASE_URL.startswith("sqlite"):
+        configuration["sqlalchemy.connect_args"] = {"check_same_thread": False}
+    
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

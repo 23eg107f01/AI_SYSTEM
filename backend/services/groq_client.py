@@ -1,5 +1,6 @@
 """
 Groq API client — retry logic, timeout detection, cost tracking.
+Uses LangChain's ChatGroq for automatic LangSmith tracing integration.
 
 Model: llama3-70b-8192 (mapped to llama-3.3-70b-versatile, the current replacement)
 Pricing (llama-3.3-70b-versatile):
@@ -12,7 +13,8 @@ import logging
 import traceback
 from typing import Any, Optional
 
-from groq import AsyncGroq, APITimeoutError, APIStatusError
+from langchain_groq import ChatGroq
+from langchain_core.messages import SystemMessage, HumanMessage
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -36,7 +38,13 @@ ACTIVE_MODEL = "llama-3.3-70b-versatile"
 # Timeout: flag for human review if LLM takes > 10s
 LLM_TIMEOUT_SECONDS = 10
 
-_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+# LangChain ChatGroq client — has automatic LangSmith tracing
+_client = ChatGroq(
+    api_key=settings.GROQ_API_KEY,
+    model=ACTIVE_MODEL,
+    temperature=0.1,
+    max_tokens=settings.MAX_TOKENS_PER_CALL,
+)
 
 
 class LLMResponse:
@@ -92,30 +100,67 @@ class LLMFallbackResponse(LLMResponse):
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=8),
-    retry=retry_if_exception_type((APIStatusError, ConnectionError, OSError)),
+    retry=retry_if_exception_type((Exception,)),
     reraise=True,
 )
-async def _groq_call(
-    model: str,
-    messages: list,
+def _groq_call(
+    system_prompt: str,
+    user_message: str,
     max_tokens: int,
     temperature: float,
 ) -> LLMResponse:
-    """Raw Groq call with retry on transient errors. Timeout handled by caller."""
-    completion = await _client.chat.completions.create(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    choice = completion.choices[0]
-    usage = completion.usage
-    return LLMResponse(
-        content=choice.message.content or "",
-        input_tokens=usage.prompt_tokens,
-        output_tokens=usage.completion_tokens,
-        model=model,
-    )
+    """
+    Raw Groq call via LangChain ChatGroq with retry on transient errors.
+    This is a SYNCHRONOUS function wrapped by asyncio.to_thread() in call_llm().
+    ChatGroq automatically integrates with LangSmith tracing.
+    """
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_message),
+    ]
+    
+    try:
+        # Create a temporary ChatGroq instance with override parameters
+        llm = ChatGroq(
+            api_key=settings.GROQ_API_KEY,
+            model=ACTIVE_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        
+        logger.debug(
+            "Calling ChatGroq.invoke() with model=%s, temp=%f, max_tokens=%d",
+            ACTIVE_MODEL, temperature, max_tokens
+        )
+        
+        # Invoke synchronously
+        # This automatically sends traces to LangSmith if configured
+        response = llm.invoke(messages)
+        
+        # Extract usage info from response.response_metadata
+        response_metadata = getattr(response, "response_metadata", {}) or {}
+        token_usage = response_metadata.get("token_usage", {})
+        
+        input_tokens = token_usage.get("prompt_tokens", 0)
+        output_tokens = token_usage.get("completion_tokens", 0)
+        
+        logger.info(
+            "ChatGroq response: model=%s, tokens_in=%d, tokens_out=%d, content_len=%d",
+            ACTIVE_MODEL, input_tokens, output_tokens, len(response.content or "")
+        )
+        
+        return LLMResponse(
+            content=response.content or "",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=ACTIVE_MODEL,
+        )
+    except Exception as e:
+        logger.error(
+            "ChatGroq.invoke() failed: %s\nFull traceback:\n%s",
+            e, traceback.format_exc()
+        )
+        raise
 
 
 async def call_llm(
@@ -126,7 +171,8 @@ async def call_llm(
     temperature: float = 0.1,
 ) -> LLMResponse:
     """
-    Makes a Groq chat completion call with:
+    Makes a Groq chat completion call via LangChain ChatGroq with:
+    - Automatic LangSmith tracing (if configured)
     - 10-second timeout (returns LLMFallbackResponse on timeout)
     - 3-retry exponential backoff on transient errors
     - Full exception logging
@@ -137,14 +183,15 @@ async def call_llm(
     if max_tokens is None:
         max_tokens = settings.MAX_TOKENS_PER_CALL
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message},
-    ]
-
     try:
         result = await asyncio.wait_for(
-            _groq_call(model, messages, max_tokens, temperature),
+            asyncio.to_thread(
+                _groq_call,
+                system_prompt,
+                user_message,
+                max_tokens,
+                temperature,
+            ),
             timeout=LLM_TIMEOUT_SECONDS,
         )
         return result

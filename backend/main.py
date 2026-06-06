@@ -31,6 +31,14 @@ from utils.limiter import limiter
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting AI Customer Support System...")
+    
+    # Initialize LangSmith tracing
+    from services.langsmith_client import setup_langsmith, test_langsmith_connection
+    langsmith_ok = setup_langsmith()
+    if langsmith_ok:
+        connection_status = test_langsmith_connection()
+        logger.info("LangSmith status: %s", connection_status)
+    
     if settings.REDIS_ENABLED and redis_client is not None:
         try:
             await redis_client.ping()
@@ -97,7 +105,46 @@ app.include_router(dashboard_router)
 # ─── Health check ────────────────────────────────────────────────────────────
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    from sqlalchemy import text
+    from db.base import SessionLocal
+    
+    db_status = "ok"
+    db_error = None
+    
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except Exception as e:
+        db_status = "error"
+        db_error = str(e)
+    
+    return {
+        "status": "ok", 
+        "version": "1.0.0",
+        "database": {
+            "status": db_status,
+            "error": db_error
+        }
+    }
+
+
+# ─── LangSmith connection check ───────────────────────────────────────────────
+@app.get("/health/langsmith", tags=["system"])
+async def langsmith_health():
+    """Check LangSmith tracing connection status."""
+    from services.langsmith_client import test_langsmith_connection
+    
+    result = test_langsmith_connection()
+    status_code = status.HTTP_200_OK if result["connected"] else status.HTTP_503_SERVICE_UNAVAILABLE
+    
+    return {
+        "service": "langsmith",
+        "connected": result["connected"],
+        "reason": result["reason"],
+        "project": result.get("project"),
+        "projects_found": result.get("projects_found"),
+    }
 
 
 @app.get("/", tags=["system"])

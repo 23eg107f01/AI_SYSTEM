@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     SLA_AMBER_MINUTES: int = 5
     SLA_RED_MINUTES: int = 15
 
+    # LangSmith (LLM monitoring & tracing)
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_PROJECT: str = "ai-customer-support"
+    LANGSMITH_TRACING: bool = True
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",")]

@@ -39,6 +39,8 @@ def upgrade() -> None:
         "tickets",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("customer_name", sa.String(255), nullable=True),
+        sa.Column("customer_email", sa.String(255), nullable=True),
         sa.Column("message", sa.Text(), nullable=False),
         sa.Column(
             "category",
@@ -88,6 +90,8 @@ def upgrade() -> None:
         sa.Column("ticket_id", sa.Integer(), nullable=False),
         sa.Column("reason", sa.String(500), nullable=False),
         sa.Column("assigned_agent_id", sa.Integer(), nullable=True),
+        sa.Column("context_summary", sa.Text(), nullable=True),
+        sa.Column("suggested_reply", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["ticket_id"], ["tickets.id"]),
         sa.ForeignKeyConstraint(["assigned_agent_id"], ["users.id"]),

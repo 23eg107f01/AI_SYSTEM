@@ -1,15 +1,17 @@
 import { Link, useNavigate } from "react-router-dom";
-import { AuthUser, clearTokens, isRole } from "../utils/auth";
+import { AuthUser, isRole } from "../utils/auth";
+import { useAuth } from "../hooks/useAuth";
 
 interface Props {
   user: AuthUser;
 }
 
 export default function Navbar({ user }: Props) {
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
-  function handleLogout() {
-    clearTokens();
+  async function handleLogout() {
+    await logout();
     navigate("/login");
   }
 

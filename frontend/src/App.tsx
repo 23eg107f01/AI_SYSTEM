@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState, useEffect } from "react";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ChatPage from "./pages/ChatPage";
@@ -7,19 +6,15 @@ import DashboardPage from "./pages/DashboardPage";
 import AdminPanel from "./pages/AdminPanel";
 import AgentQueue from "./pages/AgentQueue";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { getStoredUser, AuthUser } from "./utils/auth";
+import { useAuth } from "./hooks/useAuth";
 
 function App() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser);
-
-  useEffect(() => {
-    setUser(getStoredUser());
-  }, []);
+  const { user } = useAuth();
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage onLogin={() => setUser(getStoredUser())} />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
         {/* Customer Gated Route */}

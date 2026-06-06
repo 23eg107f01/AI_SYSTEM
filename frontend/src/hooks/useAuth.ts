@@ -3,7 +3,7 @@ import api from "../utils/api";
 import { saveTokens, clearTokens, getStoredUser, AuthUser } from "../utils/auth";
 
 export function useAuth() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser);
+  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +35,15 @@ export function useAuth() {
     setLoading(true);
     setError(null);
     try {
+      // Step 1: Register the user
       await api.post("/auth/register", { email, password, role });
+      
+      // Step 2: Immediately log them in
+      const { data } = await api.post("/auth/login", { email, password });
+      saveTokens(data.access_token, data.refresh_token);
+      const storedUser = getStoredUser();
+      setUser(storedUser);
+      
       return true;
     } catch (err: unknown) {
       const msg =
