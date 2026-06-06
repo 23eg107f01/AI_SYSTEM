@@ -38,13 +38,7 @@ ACTIVE_MODEL = "llama-3.3-70b-versatile"
 # Timeout: flag for human review if LLM takes > 10s
 LLM_TIMEOUT_SECONDS = 10
 
-# LangChain ChatGroq client — has automatic LangSmith tracing
-_client = ChatGroq(
-    api_key=settings.GROQ_API_KEY,
-    model=ACTIVE_MODEL,
-    temperature=0.1,
-    max_tokens=settings.MAX_TOKENS_PER_CALL,
-)
+# LangChain ChatGroq client — initialized on demand
 
 
 class LLMResponse:
