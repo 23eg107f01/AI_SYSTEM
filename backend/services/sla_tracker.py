@@ -41,6 +41,13 @@ async def sla_tracker_task():
         await asyncio.sleep(60)
 
 def start_sla_tracker():
-    """Starts the SLA tracker as a background asyncio task."""
-    loop = asyncio.get_event_loop()
-    loop.create_task(sla_tracker_task())
+    """Starts the SLA tracker as a background asyncio task (if possible)."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(sla_tracker_task())
+        logger.info("SLA tracker started successfully.")
+    except RuntimeError:
+        # No running event loop (e.g., Vercel serverless), skip starting SLA tracker
+        logger.info("No running event loop, skipping SLA tracker (serverless environment).")
+    except Exception as e:
+        logger.warning(f"Failed to start SLA tracker: {e}")
