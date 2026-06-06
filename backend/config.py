@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     # LLM
     GROQ_API_KEY: str = ""
 
-    # PostgreSQL
-    DATABASE_URL: str = "postgresql://aicsa:aicsa_pass@localhost:5432/aicsa_db"
+    # PostgreSQL or SQLite
+    DATABASE_URL: str = "sqlite:///./aicsa.db"
 
     # Redis
     REDIS_ENABLED: bool = False
