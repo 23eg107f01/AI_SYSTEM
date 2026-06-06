@@ -41,6 +41,10 @@ Thumbs.db
 # Database files
 *.db
 
+# Test files and videos
+test_import.py
+final_demo_video.mp4
+
 # Virtual environment
 .venv311/
 .venv/
