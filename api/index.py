@@ -9,7 +9,7 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
-from backend.main import app
+from main import app
 
 # Vercel calls this handler for all requests
 __all__ = ['app']
