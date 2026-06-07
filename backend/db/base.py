@@ -31,6 +31,18 @@ class Base(DeclarativeBase):
     pass
 
 
+def initialize_database() -> None:
+    """
+    Create tables automatically for SQLite deployments.
+
+    Vercel's fallback SQLite database lives in `/tmp` and starts empty on cold starts,
+    so the schema must be recreated when the function boots. Managed databases should
+    still rely on migrations.
+    """
+    if settings.DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+
+
 def get_db():
     """FastAPI dependency — yields a DB session and closes it after the request."""
     db = SessionLocal()

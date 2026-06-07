@@ -11,7 +11,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from config import settings
-from db.base import engine
+from db.base import engine, initialize_database
 from db.redis_client import redis_client
 from models import *  # noqa: F401, F403 — registers all models with SQLAlchemy
 from auth.router import router as auth_router
@@ -31,6 +31,13 @@ from utils.limiter import limiter
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting AI Customer Support System...")
+
+    try:
+        initialize_database()
+        logger.info("Database initialization complete")
+    except Exception as e:
+        logger.exception("Database initialization failed: %s", e)
+        raise
     
     # Initialize LangSmith tracing
     from services.langsmith_client import setup_langsmith, test_langsmith_connection
