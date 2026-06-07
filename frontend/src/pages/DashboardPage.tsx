@@ -23,7 +23,13 @@ export default function DashboardPage({ user }: Props) {
 
   useEffect(() => {
     const apiBase = api.defaults.baseURL || "http://localhost:8000";
-    const wsUrl = apiBase.replace(/^http/, "ws") + "/api/dashboard/ws";
+    let wsUrl = "";
+    if (apiBase.startsWith("/")) {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      wsUrl = `${protocol}//${window.location.host}${apiBase}/api/dashboard/ws`;
+    } else {
+      wsUrl = apiBase.replace(/^http/, "ws") + "/api/dashboard/ws";
+    }
     let ws: WebSocket | null = null;
 
     async function loadDashboard() {

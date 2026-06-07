@@ -207,8 +207,14 @@ export default function ChatPage({ user }: Props) {
       return;
     }
 
-    const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    const wsUrl = apiBaseUrl.replace(/^http/, "ws") + `/ws/chat?token=${token}`;
+    const apiBase = api.defaults.baseURL || "http://localhost:8000";
+    let wsUrl = "";
+    if (apiBase.startsWith("/")) {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      wsUrl = `${protocol}//${window.location.host}${apiBase}/ws/chat?token=${token}`;
+    } else {
+      wsUrl = apiBase.replace(/^http/, "ws") + `/ws/chat?token=${token}`;
+    }
 
     let ws: WebSocket | undefined;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
