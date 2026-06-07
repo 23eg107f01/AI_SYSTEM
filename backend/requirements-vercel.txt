@@ -22,7 +22,7 @@ chromadb-client==1.5.9
 
 # LLM - Groq (via LangChain for LangSmith tracing)
 groq==0.9.0
-langchain-core==0.2.1
+langchain-core>=0.2.2,<0.3
 langchain-groq==0.1.6
 langchain-text-splitters==0.2.1
 
