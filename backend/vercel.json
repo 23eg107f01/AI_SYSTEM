@@ -1,5 +1,5 @@
 {
   "framework": "fastapi",
-  "buildCommand": "pip install -r requirements.txt",
+  "buildCommand": "pip install -r requirements-vercel.txt",
   "entrypoint": "main:app"
 }

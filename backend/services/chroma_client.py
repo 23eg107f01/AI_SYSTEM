@@ -2,13 +2,13 @@
 ChromaDB client and vector search utilities.
 Uses sentence-transformers for local embeddings (no API cost).
 Supports both local PersistentClient and ChromaDB Cloud (when CHROMA_API_KEY is set).
+
+NOTE: chromadb and sentence_transformers are imported lazily (inside functions)
+so that the FastAPI app starts successfully on Vercel even if they are not
+bundled — calls that require them will raise a RuntimeError with a clear message.
 """
 import logging
 from typing import List, Dict, Any
-
-import chromadb
-from chromadb.config import Settings as ChromaSettings
-from sentence_transformers import SentenceTransformer
 
 from config import settings
 
@@ -20,13 +20,21 @@ _COLLECTION_NAME = "knowledge_base"
 
 # Lazy-loaded singletons
 _chroma_client = None
-_embed_model: SentenceTransformer = None
+_embed_model = None
 _collection = None
 
 
-def _get_embed_model() -> SentenceTransformer:
+def _get_embed_model():
     global _embed_model
     if _embed_model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "sentence-transformers is not installed. "
+                "It is excluded from the Vercel bundle to stay within the 500 MB limit. "
+                "Run KB ingestion in Docker/local instead."
+            ) from exc
         logger.info("Loading embedding model: %s", _EMBED_MODEL_NAME)
         _embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
     return _embed_model
@@ -35,6 +43,14 @@ def _get_embed_model() -> SentenceTransformer:
 def _get_chroma_client():
     global _chroma_client
     if _chroma_client is None:
+        try:
+            import chromadb
+            from chromadb.config import Settings as ChromaSettings
+        except ImportError as exc:
+            raise RuntimeError(
+                "chromadb is not installed in this environment."
+            ) from exc
+
         if settings.CHROMA_API_KEY:
             # ChromaDB Cloud — CloudClient auto-reads CHROMA_* env vars
             logger.info(

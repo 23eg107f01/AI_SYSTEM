@@ -17,8 +17,6 @@ import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from services.chroma_client import add_chunks
-
 logger = logging.getLogger(__name__)
 
 # Chunking config per spec: 500 tokens, 50 overlap
@@ -108,6 +106,8 @@ def ingest_document(
             "total_chunks": len(chunks),
         })
 
+    # Lazy import so the module can be loaded even when chromadb is absent (e.g. Vercel)
+    from services.chroma_client import add_chunks  # noqa: PLC0415
     add_chunks(chunks=chunks, metadatas=metadatas, ids=ids)
     logger.info("Ingested %d chunks for '%s'", len(chunks), source_file)
     return len(chunks), ids
