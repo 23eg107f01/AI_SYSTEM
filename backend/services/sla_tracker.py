@@ -12,7 +12,8 @@ async def sla_tracker_task():
     logger.info("SLA Tracker started. Checking every 60 seconds.")
     while True:
         try:
-            with SessionLocal() as db:
+            db = SessionLocal()
+            try:
                 now = datetime.now(timezone.utc)
                 amber_threshold = now - timedelta(minutes=settings.SLA_AMBER_MINUTES)
                 red_threshold = now - timedelta(minutes=settings.SLA_RED_MINUTES)
@@ -35,6 +36,8 @@ async def sla_tracker_task():
                 
                 if amber_tickets:
                     logger.info(f"SLA WARNING (AMBER): {len(amber_tickets)} tickets open > {settings.SLA_AMBER_MINUTES}m")
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error in SLA tracker: {e}")
         
