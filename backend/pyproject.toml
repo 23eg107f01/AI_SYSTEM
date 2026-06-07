@@ -27,18 +27,9 @@ dependencies = [
 
     # LLM - Groq
     "groq==0.9.0",
-    "langchain-core>=0.2.2,<0.3",
-    "langchain-groq==0.1.6",
     "langchain-text-splitters==0.2.1",
 
     # LLM Monitoring & Tracing
-    "langsmith==0.1.75",
-
-    # Document parsing
-    "PyMuPDF==1.24.4",
-    "python-docx==1.1.2",
-
-    # Utilities
     "python-dotenv==1.0.1",
     "pydantic==2.7.1",
     "pydantic-settings==2.2.1",

@@ -13,8 +13,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import List, Tuple
 
-import fitz  # PyMuPDF
-from docx import Document as DocxDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
@@ -33,6 +31,14 @@ text_splitter = RecursiveCharacterTextSplitter(
 # ─── Text extractors ─────────────────────────────────────────────────────────
 
 def extract_text_from_pdf(file_path: str) -> str:
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF ingestion dependencies are not installed in this environment. "
+            "Run KB ingestion in Docker/local instead."
+        ) from exc
+
     doc = fitz.open(file_path)
     pages = [page.get_text() for page in doc]
     doc.close()
@@ -40,6 +46,14 @@ def extract_text_from_pdf(file_path: str) -> str:
 
 
 def extract_text_from_docx(file_path: str) -> str:
+    try:
+        from docx import Document as DocxDocument
+    except ImportError as exc:
+        raise RuntimeError(
+            "DOCX ingestion dependencies are not installed in this environment. "
+            "Run KB ingestion in Docker/local instead."
+        ) from exc
+
     doc = DocxDocument(file_path)
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 

@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
 
     # PostgreSQL or SQLite
-    DATABASE_URL: str = "sqlite:///./aicsa.db"
+    DATABASE_URL: str = "sqlite:////tmp/aicsa.db"
 
     # Redis
     REDIS_ENABLED: bool = False
