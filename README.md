@@ -11,7 +11,7 @@ An AI-assisted customer support workspace for classifying tickets, grounding res
 
 ## Live Demo
 
-[Deployment URL placeholder](https://example.com)
+[Deployment URL placeholder](https://ai-system-ad7n-e1zg46rev-23eg107f01-3181s-projects.vercel.app/login)
 
 This repository does not currently publish a production deployment URL.
 
