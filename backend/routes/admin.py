@@ -19,7 +19,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from auth import require_admin_role
+from auth import require_admin
 from db.base import SessionLocal, get_db
 from models import User
 from models.ticket import KBDocument
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
-    dependencies=[Depends(require_admin_role)],
+    dependencies=[Depends(require_admin)],
 )
 
 
@@ -47,7 +47,7 @@ async def upload_kb_document(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
-    current_user: User = Depends(require_admin_role),
+    current_user: User = Depends(require_admin),
 ):
     """
     Upload a document (PDF, DOCX, TXT) to the knowledge base.
@@ -60,7 +60,7 @@ async def upload_kb_document(
     # 1. Validate file size
     file.file.seek(0, 2)
     file_size = file.file.tell()
-    await file.seek(0)
+    file.file.seek(0)
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
@@ -86,7 +86,6 @@ async def upload_kb_document(
         filename=file.filename,
         category=category,
         status="processing",
-        uploader_id=current_user.id,
     )
     db.add(kb_doc)
     db.commit()

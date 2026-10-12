@@ -15,7 +15,7 @@ from db.base import engine, initialize_database
 from db.redis_client import redis_client
 from models import *  # noqa: F401, F403 — registers all models with SQLAlchemy
 from auth.router import router as auth_router
-from routes import tickets_router, kb_router, dashboard_router
+from routes import tickets_router, kb_router, dashboard_router, admin_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -107,6 +107,7 @@ app.include_router(auth_router)
 app.include_router(tickets_router)
 app.include_router(kb_router)
 app.include_router(dashboard_router)
+app.include_router(admin_router)
 
 
 # ─── Health check ────────────────────────────────────────────────────────────

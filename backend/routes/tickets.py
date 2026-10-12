@@ -374,6 +374,7 @@ async def create_ticket(
     db.flush()  # get ticket.id
 
     needs_human_review = False
+    response_obj = None
 
     try:
         # ── 3. Classify category ────────────────────────────────────────────
@@ -603,7 +604,8 @@ async def create_ticket(
     # ── 8 & 9. Write to PostgreSQL (commit) & Start SLA timer ───────────────
     db.commit()
     db.refresh(ticket)
-    db.refresh(response_obj)
+    if response_obj is not None:
+        db.refresh(response_obj)
     
     logger.info("SLA timer started for ticket %d at %s", ticket.id, ticket.created_at)
 

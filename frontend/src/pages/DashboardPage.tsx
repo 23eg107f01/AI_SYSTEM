@@ -1,327 +1,397 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+import { useQueries, useQueryClient } from "react-query";
 import {
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  AlertTriangle,
+  ArrowUpRight,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  LifeBuoy,
+  RefreshCw,
+  ShieldAlert,
+  Sparkles,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { AlertTriangle, Clock, Activity, ShieldCheck, FileText } from "lucide-react";
-import Navbar from "../components/Navbar";
-import { AuthUser } from "../utils/auth";
+import { Link } from "react-router-dom";
+import { Button, Card, EmptyState, ErrorState, SentimentBadge, Skeleton, StatCard, StatusBadge, TableSkeleton } from "../components/ui";
 import api from "../utils/api";
+import { usePageVisibility } from "../hooks/usePageVisibility";
+import { operationalQueryOptions, pollingIntervals, queryKeys } from "../utils/queryConfig";
 
-interface Props {
-  user: AuthUser;
+interface DashboardStats {
+  total_tickets: number;
+  today_tickets: number;
+  by_category: Record<string, number>;
+  by_status: Record<string, number>;
+  by_sentiment: Record<string, number>;
+  avg_quality_score: number;
+  quality_trend: Array<{ date: string; score: number }>;
+  escalation_rate: number;
+  avg_response_time_minutes: number;
+  sla_compliance_rate: number;
+  sla: { amber_count: number; red_count: number };
+  today_llm_cost_usd: number;
+  generated_at: string;
 }
 
-const PIE_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6"];
+interface Ticket {
+  id: number;
+  user_id: number;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  message: string;
+  category: string | null;
+  sentiment: string | null;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+}
 
-export default function DashboardPage({ user }: Props) {
-  const [stats, setStats] = useState<any>(null);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [slaTickets, setSlaTickets] = useState<any[]>([]);
-  const [kbDocs, setKbDocs] = useState<any[]>([]);
-  const [wsError, setWsError] = useState(false);
+interface EscalatedTicket {
+  ticket_id: number;
+  message: string;
+  category: string | null;
+  sentiment: string | null;
+  created_at: string;
+  escalation_reason: string | null;
+}
 
-  useEffect(() => {
-    const apiBase = api.defaults.baseURL || "http://localhost:8000";
-    let wsUrl = "";
-    if (apiBase.startsWith("/")) {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      wsUrl = `${protocol}//${window.location.host}${apiBase}/api/dashboard/ws`;
-    } else {
-      wsUrl = apiBase.replace(/^http/, "ws") + "/api/dashboard/ws";
-    }
-    let ws: WebSocket | null = null;
+interface QueryResult<T> {
+  data?: T;
+  dataUpdatedAt: number;
+  isLoading: boolean;
+  isFetching: boolean;
+  error: unknown;
+  refetch: () => Promise<unknown>;
+}
 
-    async function loadDashboard() {
-      try {
-        const [statsRes, auditRes, slaRes, kbRes] = await Promise.all([
-          api.get("/api/dashboard/stats"),
-          api.get("/api/dashboard/audit"),
-          api.get("/api/dashboard/sla-status"),
-          api.get("/api/kb"),
-        ]);
-        setStats(statsRes.data);
-        setAuditLogs(auditRes.data);
-        setSlaTickets(slaRes.data);
-        setKbDocs(kbRes.data);
-      } catch (e) {
-        console.error("Failed to load dashboard data", e);
-      }
-    }
+const chartColors = ["#4f46e5", "#0ea5e9", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6"];
 
-    loadDashboard();
+function formatDate(value: string, withTime = false): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, withTime
+    ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+    : { month: "short", day: "numeric" }
+  ).format(date);
+}
 
+function formatMinutes(value: number): string {
+  if (value < 1) return "<1m";
+  if (value < 60) return `${value.toFixed(1)}m`;
+  return `${Math.floor(value / 60)}h ${Math.round(value % 60)}m`;
+}
+
+function humanize(value: string): string {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function ChartPanel({ title, description, children, className = "" }: { title: string; description: string; children: React.ReactNode; className?: string }) {
+  return (
+    <Card className={`min-w-0 p-5 sm:p-6 ${className}`}>
+      <div className="mb-5">
+        <h2 className="text-sm font-bold text-slate-950">{title}</h2>
+        <p className="mt-1 text-xs text-slate-500">{description}</p>
+      </div>
+      <div className="h-64 min-w-0 w-full overflow-hidden" role="img" aria-label={`${title}: ${description}`}>
+        {children}
+      </div>
+    </Card>
+  );
+}
+
+function ChartSkeleton() {
+  return <Skeleton className="h-64 w-full rounded-lg" />;
+}
+
+export default function DashboardPage() {
+  const queryClient = useQueryClient();
+  const isTabVisible = usePageVisibility();
+  const [refreshing, setRefreshing] = useState(false);
+  const results = useQueries([
+    {
+      queryKey: queryKeys.dashboardStats,
+      queryFn: () => api.get<DashboardStats>("/api/dashboard/stats").then((response) => response.data),
+      ...operationalQueryOptions(15_000, pollingIntervals.dashboard),
+    },
+    {
+      queryKey: queryKeys.tickets,
+      queryFn: () => api.get<Ticket[]>("/api/tickets").then((response) => response.data),
+      ...operationalQueryOptions(30_000, pollingIntervals.dashboard),
+    },
+    {
+      queryKey: queryKeys.dashboardEscalations,
+      queryFn: () => api.get<EscalatedTicket[]>("/api/agent/queue").then((response) => response.data),
+      ...operationalQueryOptions(10_000, pollingIntervals.dashboard),
+    },
+  ]) as [QueryResult<DashboardStats>, QueryResult<Ticket[]>, QueryResult<EscalatedTicket[]>];
+
+  const [statsQuery, ticketsQuery, escalationsQuery] = results;
+  const stats = statsQuery.data;
+  const tickets = ticketsQuery.data || [];
+  const escalations = escalationsQuery.data || [];
+  const loading = results.some((query) => query.isLoading);
+  const fetching = results.some((query) => query.isFetching);
+  const hasError = results.some((query) => query.error);
+  const lastUpdatedAt = Math.max(...results.map((query) => query.dataUpdatedAt || 0));
+
+  const resolvedTickets = stats?.by_status.resolved || 0;
+  const openTickets = stats?.by_status.open || 0;
+  const escalatedTickets = stats?.by_status.escalated || 0;
+  const resolutionRate = stats && stats.total_tickets > 0
+    ? Math.round((resolvedTickets / stats.total_tickets) * 100)
+    : 0;
+
+  const categoryData = useMemo(
+    () => Object.entries(stats?.by_category || {}).map(([name, value]) => ({ name: humanize(name), value })),
+    [stats?.by_category]
+  );
+  const statusData = useMemo(
+    () => Object.entries(stats?.by_status || {}).map(([name, value]) => ({ name: humanize(name), value })),
+    [stats?.by_status]
+  );
+  const sentimentData = useMemo(
+    () => Object.entries(stats?.by_sentiment || {}).map(([name, value]) => ({ name, value })),
+    [stats?.by_sentiment]
+  );
+  const recentTickets = tickets.slice(0, 8);
+
+  async function refreshDashboard() {
+    setRefreshing(true);
     try {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setStats(data);
-          setWsError(false);
-        } catch (e) {
-          console.error("Failed to parse WS data", e);
-        }
-      };
-      ws.onerror = (e) => {
-        console.error("WS Error", e);
-        setWsError(true);
-      };
-      ws.onclose = () => setWsError(true);
-    } catch (e) {
-      console.error("Failed to open dashboard websocket", e);
-      setWsError(true);
+      await Promise.all([
+        queryClient.invalidateQueries(queryKeys.dashboardStats),
+        queryClient.invalidateQueries(queryKeys.tickets),
+        queryClient.invalidateQueries(queryKeys.dashboardEscalations),
+      ]);
+    } finally {
+      setRefreshing(false);
     }
+  }
 
-    const interval = setInterval(() => {
-      loadDashboard();
-    }, 30000);
-
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-      clearInterval(interval);
-    };
-  }, []);
-
-  if (!stats) {
+  if (hasError && !stats) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white">
-        <Navbar user={user} />
-        <div className="flex items-center justify-center h-96">
-          {wsError ? "Failed to connect to real-time stats." : "Loading dashboard..."}
-        </div>
+      <div className="mx-auto max-w-7xl">
+        <ErrorState
+          title="Support overview unavailable"
+          description={undefined}
+          error={statsQuery.error || ticketsQuery.error || escalationsQuery.error}
+          action={<Button onClick={refreshDashboard} loading={refreshing}>Try again</Button>}
+        />
       </div>
     );
   }
 
-  const categoryData = Object.entries(stats.by_category || {}).map(([name, value]) => ({ name, value }));
-  const sentimentData = Object.entries(stats.by_sentiment || {}).map(([name, value]) => ({ name, value }));
-  const qualityTrend = stats.quality_trend || [];
-  
-  // SLA compliance is a single percentage, we can render it as a single-bar chart or dial
-  const slaComplianceData = [
-    { name: "Compliant", value: stats.sla_compliance_rate },
-    { name: "Breached", value: 100 - stats.sla_compliance_rate }
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
-      <Navbar user={user} />
-      
-      <main className="px-6 py-8 max-w-7xl mx-auto space-y-8">
-        <div className="flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
-              Manager Dashboard
-            </h1>
-            <p className="text-sm text-gray-400 mt-1 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              Live Real-Time Data Connection Active
-            </p>
-          </div>
-          <div className="text-sm text-gray-500">
-            Last updated: {new Date(stats.generated_at).toLocaleTimeString()}
-          </div>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-600">Operations dashboard</p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Support Overview</h1>
+          <p className="mt-2 text-sm text-slate-600">Monitor ticket activity, AI performance and escalations.</p>
         </div>
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KpiCard title="Today's Tickets" value={stats.today_tickets} icon={<FileText size={20}/>} color="from-blue-500 to-blue-600" />
-          <KpiCard title="Avg Response Time" value={`${stats.avg_response_time_minutes}m`} icon={<Clock size={20}/>} color="from-green-500 to-emerald-600" />
-          <KpiCard title="Escalation Rate" value={`${stats.escalation_rate}%`} icon={<AlertTriangle size={20}/>} color="from-orange-500 to-amber-600" />
-          <KpiCard title="Avg Quality Score" value={`${stats.avg_quality_score}/10`} icon={<ShieldCheck size={20}/>} color="from-purple-500 to-indigo-600" />
+        <div className="flex items-center gap-3">
+          <p className="text-right text-xs text-slate-500">
+            <span className="block font-medium text-slate-600">{lastUpdatedAt ? `Last updated ${formatDate(new Date(lastUpdatedAt).toISOString(), true)}` : "Waiting for data"}</span>
+            <span className="mt-0.5 block">{fetching ? "Updating cached data…" : isTabVisible ? "Auto-refresh active · 30 sec" : "Auto-refresh resumes when active"}</span>
+          </p>
+          <Button variant="outline" size="sm" onClick={refreshDashboard} loading={refreshing} aria-label="Refresh support overview">
+            {!refreshing && <RefreshCw aria-hidden="true" className="h-4 w-4" />}
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         </div>
+      </header>
 
-        {/* Charts Row 1 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ChartCard title="Ticket Volume by Category">
+      {hasError && (
+        <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800" role="status">
+          Some dashboard sections could not be updated. Showing the latest available data.
+        </div>
+      )}
+
+      <section aria-label="Support key performance indicators" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="Total tickets" value={loading ? <Skeleton className="h-8 w-20" /> : stats?.total_tickets ?? "—"} description={stats ? `${stats.today_tickets} created today` : "Loading"} icon={<FileText className="h-5 w-5" />} />
+        <StatCard label="Open tickets" value={loading ? <Skeleton className="h-8 w-20" /> : openTickets} description="Awaiting resolution" icon={<Clock3 className="h-5 w-5" />} />
+        <StatCard label="Resolved tickets" value={loading ? <Skeleton className="h-8 w-20" /> : resolvedTickets} description={stats ? `${resolutionRate}% resolution rate` : "Loading"} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Escalated tickets" value={loading ? <Skeleton className="h-8 w-20" /> : escalatedTickets} description={stats ? `${stats.escalation_rate}% of all tickets` : "Loading"} icon={<ShieldAlert className="h-5 w-5" />} />
+        <StatCard label="AI quality score" value={loading ? <Skeleton className="h-8 w-20" /> : stats ? `${stats.avg_quality_score}/10` : "—"} description={stats ? `Avg. response time ${formatMinutes(stats.avg_response_time_minutes)}` : "Loading"} icon={<Sparkles className="h-5 w-5" />} />
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-2">
+        {loading ? <ChartPanel title="Tickets by category" description="Distribution of classified support tickets"><ChartSkeleton /></ChartPanel> : categoryData.length ? (
+          <ChartPanel title="Tickets by category" description="Distribution of classified support tickets">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={categoryData} margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                <XAxis dataKey="name" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip cursor={{fill: '#374151', opacity: 0.4}} contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
-                <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <BarChart data={categoryData} margin={{ top: 8, right: 8, bottom: 8, left: -20 }}>
+                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: "#64748b", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: "#64748b", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip cursor={{ fill: "#eef2ff" }} contentStyle={{ borderRadius: 10, borderColor: "#e2e8f0", fontSize: 12 }} />
+                <Bar dataKey="value" name="Tickets" fill="#4f46e5" radius={[5, 5, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </ChartPanel>
+        ) : <EmptyState title="No category data yet" description="Classified tickets will appear here." />}
 
-          <ChartCard title="Sentiment Distribution">
+        {loading ? <ChartPanel title="Ticket status" description="Current distribution of support work"><ChartSkeleton /></ChartPanel> : statusData.length ? (
+          <ChartPanel title="Ticket status" description="Current distribution of support work">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={sentimentData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5}>
-                  {sentimentData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                <Pie data={statusData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={88} paddingAngle={3}>
+                  {statusData.map((entry, index) => <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
-                <Legend />
+                <Tooltip contentStyle={{ borderRadius: 10, borderColor: "#e2e8f0", fontSize: 12 }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
-          </ChartCard>
-        </div>
+          </ChartPanel>
+        ) : <EmptyState title="No status data yet" description="Ticket statuses will appear here." />}
+      </section>
 
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ChartCard title="Average Quality Score (Last 7 Days)">
+      <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        {loading ? <ChartPanel title="AI quality trend" description="Daily average response quality from available responses"><ChartSkeleton /></ChartPanel> : stats?.quality_trend.length ? (
+          <ChartPanel title="AI quality trend" description="Daily average response quality from available responses">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={qualityTrend} margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                <XAxis dataKey="date" stroke="#9ca3af" />
-                <YAxis domain={[0, 10]} stroke="#9ca3af" />
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
-                <Line type="monotone" dataKey="score" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <LineChart data={stats.quality_trend} margin={{ top: 8, right: 8, bottom: 8, left: -20 }}>
+                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(value) => formatDate(value)} tick={{ fill: "#64748b", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis domain={[0, 10]} tick={{ fill: "#64748b", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip labelFormatter={(value) => formatDate(String(value))} formatter={(value: number) => [`${value}/10`, "Quality"]} contentStyle={{ borderRadius: 10, borderColor: "#e2e8f0", fontSize: 12 }} />
+                <Line type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={3} dot={{ r: 3, fill: "#4f46e5" }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
-          </ChartCard>
+          </ChartPanel>
+        ) : <EmptyState title="No quality trend yet" description="AI response quality appears after responses are recorded." />}
 
-          <ChartCard title="SLA Compliance Rate (%)">
+        {loading ? <ChartPanel title="Sentiment distribution" description="Sentiment detected across support tickets"><ChartSkeleton /></ChartPanel> : sentimentData.length ? (
+          <ChartPanel title="Sentiment distribution" description="Sentiment detected across support tickets">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={slaComplianceData} layout="vertical" margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} stroke="#9ca3af" />
-                <YAxis dataKey="name" type="category" stroke="#9ca3af" />
-                <Tooltip cursor={{fill: '#374151', opacity: 0.4}} contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {slaComplianceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.name === 'Compliant' ? '#10b981' : '#ef4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
+              <PieChart>
+                <Pie data={sentimentData} dataKey="value" nameKey="name" innerRadius={58} outerRadius={86} paddingAngle={3}>
+                  {sentimentData.map((entry, index) => <Cell key={entry.name} fill={chartColors[(index + 2) % chartColors.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: 10, borderColor: "#e2e8f0", fontSize: 12 }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
             </ResponsiveContainer>
-          </ChartCard>
-        </div>
+          </ChartPanel>
+        ) : <EmptyState title="No sentiment data yet" description="Analyzed ticket sentiment will appear here." />}
+      </section>
 
-        {/* SLA Breaches & Audit Logs */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          <div className="lg:col-span-1 bg-gray-800 border border-gray-700 rounded-2xl p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-4 text-gray-200 flex items-center gap-2">
-              <Activity size={20} className="text-red-400" /> SLA Breaches
-            </h2>
-            {slaTickets.length === 0 ? (
-              <p className="text-gray-400 text-sm">No active SLA breaches.</p>
-            ) : (
-              <ul className="space-y-3">
-                {slaTickets.map((t) => (
-                  <li key={t.id} className={`p-3 rounded-lg border ${t.flag === 'red' ? 'bg-red-900/20 border-red-500/50' : 'bg-amber-900/20 border-amber-500/50'}`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className={`text-sm font-bold ${t.flag === 'red' ? 'text-red-400' : 'text-amber-400'}`}>
-                          Ticket #{t.id}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">{t.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${t.flag === 'red' ? 'bg-red-500/20 text-red-300' : 'bg-amber-500/20 text-amber-300'}`}>
-                          {t.open_minutes}m open
-                        </span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+      <section className="grid gap-5 xl:grid-cols-[1.4fr_0.6fr]">
+        <Card className="overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <h2 className="text-sm font-bold text-slate-950">Recent tickets</h2>
+              <p className="mt-1 text-xs text-slate-500">The latest support activity from the ticket queue.</p>
+            </div>
+            <span className="text-xs font-medium text-slate-400">{tickets.length} available</span>
           </div>
-
-          <div className="lg:col-span-2 bg-gray-800 border border-gray-700 rounded-2xl p-6 shadow-xl overflow-hidden flex flex-col">
-            <h2 className="text-lg font-semibold mb-4 text-gray-200">Recent Audit Logs</h2>
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-left text-sm text-gray-400 whitespace-nowrap">
-                <thead className="text-xs uppercase bg-gray-700/50 text-gray-300">
+          <div className="sm:hidden">
+            {loading ? <div className="space-y-3 p-4"><TableSkeleton rows={4} columns={3} /></div> : recentTickets.length ? (
+              <div className="divide-y divide-slate-100">
+                {recentTickets.map((ticket) => (
+                  <article key={ticket.id} className="min-w-0 space-y-3 p-4">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800">#{ticket.id}</p>
+                        <p className="mt-1 break-words text-xs text-slate-500">{ticket.message}</p>
+                      </div>
+                      {ticket.status === "escalated" ? <Link to="/agent" className="shrink-0 text-xs font-semibold text-brand-700">Open</Link> : <span className="shrink-0 text-xs text-slate-400">Tracked</span>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {ticket.category && <span className="max-w-full break-words text-xs text-slate-600">{ticket.category}</span>}
+                      {ticket.sentiment && <SentimentBadge sentiment={ticket.sentiment} />}
+                      <StatusBadge status={ticket.status} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : <EmptyState className="m-5" title="No tickets yet" description="New support tickets will appear here." />}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
+            {loading ? <div className="p-6"><TableSkeleton rows={5} columns={5} /></div> : recentTickets.length ? (
+              <table className="w-full min-w-[680px] text-left text-sm">
+                <caption className="sr-only">Recent support tickets</caption>
+                <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
                   <tr>
-                    <th className="px-4 py-3 rounded-tl-lg">Action</th>
-                    <th className="px-4 py-3">Ticket</th>
-                    <th className="px-4 py-3">Model</th>
-                    <th className="px-4 py-3">Tokens (In/Out)</th>
-                    <th className="px-4 py-3">Cost ($)</th>
-                    <th className="px-4 py-3 rounded-tr-lg">Time</th>
+                    <th className="px-5 py-3 font-semibold sm:px-6">Ticket</th>
+                    <th className="px-3 py-3 font-semibold">Category</th>
+                    <th className="px-3 py-3 font-semibold">Sentiment</th>
+                    <th className="px-3 py-3 font-semibold">Status</th>
+                    <th className="px-3 py-3 font-semibold">Created</th>
+                    <th className="px-5 py-3 text-right font-semibold sm:px-6">Action</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {auditLogs.slice(0, 8).map(log => (
-                    <tr key={log.id} className="border-b border-gray-700/50 hover:bg-gray-700/20 transition-colors">
-                      <td className="px-4 py-3 font-medium text-gray-300">{log.action}</td>
-                      <td className="px-4 py-3">#{log.ticket_id || 'N/A'}</td>
-                      <td className="px-4 py-3"><span className="bg-gray-700 px-2 py-1 rounded text-xs">{log.model_used || 'N/A'}</span></td>
-                      <td className="px-4 py-3">{log.input_tokens} / {log.output_tokens}</td>
-                      <td className="px-4 py-3 font-mono text-green-400">${log.cost_usd.toFixed(4)}</td>
-                      <td className="px-4 py-3 text-xs">{new Date(log.timestamp).toLocaleString()}</td>
+                <tbody className="divide-y divide-slate-100">
+                  {recentTickets.map((ticket) => (
+                    <tr key={ticket.id} className="transition-colors hover:bg-slate-50">
+                      <td className="max-w-[240px] px-5 py-3.5 sm:px-6">
+                        <p className="font-semibold text-slate-800">#{ticket.id}</p>
+                        <p className="truncate text-xs text-slate-500">{ticket.message}</p>
+                      </td>
+                      <td className="px-3 py-3.5 text-xs text-slate-600">{ticket.category || "Unclassified"}</td>
+                      <td className="px-3 py-3.5">{ticket.sentiment ? <SentimentBadge sentiment={ticket.sentiment} /> : <span className="text-xs text-slate-400">—</span>}</td>
+                      <td className="px-3 py-3.5"><StatusBadge status={ticket.status} /></td>
+                      <td className="whitespace-nowrap px-3 py-3.5 text-xs text-slate-500">{formatDate(ticket.created_at, true)}</td>
+                      <td className="px-5 py-3.5 text-right sm:px-6">
+                        {ticket.status === "escalated" ? <Link to="/agent" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Open <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /></Link> : <span className="text-xs text-slate-400">Tracked</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {auditLogs.length === 0 && <p className="text-center py-4 text-gray-500">No audit logs found.</p>}
+            ) : <EmptyState className="m-5" title="No tickets yet" description="New support tickets will appear in this table." />}
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
+            <div>
+              <h2 className="text-sm font-bold text-slate-950">Escalation preview</h2>
+              <p className="mt-1 text-xs text-slate-500">Tickets waiting for human attention.</p>
             </div>
+            <ShieldAlert aria-hidden="true" className="h-5 w-5 text-warning-600" />
           </div>
-        </div>
-
-        {/* Knowledge Base Documents */}
-        <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 shadow-xl overflow-hidden">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-200">Knowledge Base Documents</h2>
-            <div className="text-xs text-gray-400">Checked automatically to verify AI context availability</div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-400 whitespace-nowrap">
-              <thead className="text-xs uppercase bg-gray-700/50 text-gray-300">
-                <tr>
-                  <th className="px-4 py-3 rounded-tl-lg">Filename</th>
-                  <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 rounded-tr-lg">Uploaded At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kbDocs.map(doc => (
-                  <tr key={doc.id} className="border-b border-gray-700/50 hover:bg-gray-700/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-300">{doc.filename}</td>
-                    <td className="px-4 py-3"><span className="bg-gray-700 px-2 py-1 rounded text-xs">{doc.category}</span></td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        doc.status === 'ready' ? 'bg-green-500/20 text-green-400' :
-                        doc.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                        'bg-blue-500/20 text-blue-400'
-                      }`}>
-                        {doc.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs">{new Date(doc.uploaded_at).toLocaleString()}</td>
-                  </tr>
+          <div className="p-5">
+            {loading ? <div className="space-y-4">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-14 w-full" />)}</div> : escalations.length ? (
+              <div className="space-y-3">
+                {escalations.slice(0, 4).map((ticket) => (
+                  <Link key={ticket.ticket_id} to="/agent" className="block rounded-xl border border-slate-200 p-3 transition-interactive hover:border-brand-200 hover:bg-brand-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-bold text-slate-800">Ticket #{ticket.ticket_id}</p>
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-warning-500" />
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{ticket.message}</p>
+                    <p className="mt-2 text-[11px] text-slate-400">{ticket.category || "Unclassified"} · {formatDate(ticket.created_at, true)}</p>
+                  </Link>
                 ))}
-              </tbody>
-            </table>
-            {kbDocs.length === 0 && <p className="text-center py-4 text-gray-500">No documents found in Knowledge Base.</p>}
+                <Link to="/agent" className="flex items-center justify-center gap-1 pt-2 text-xs font-semibold text-brand-700 hover:text-brand-600">View escalation queue <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /></Link>
+              </div>
+            ) : <EmptyState title="No active escalations" description="Tickets requiring human support will appear here." icon={<LifeBuoy aria-hidden="true" className="h-5 w-5" />} />}
           </div>
-        </div>
-      </main>
-    </div>
-  );
-}
+        </Card>
+      </section>
 
-function KpiCard({ title, value, icon, color }: { title: string, value: string | number, icon: React.ReactNode, color: string }) {
-  return (
-    <div className="relative overflow-hidden bg-gray-800 border border-gray-700 rounded-2xl p-6 shadow-xl group hover:shadow-2xl transition-all">
-      <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${color} opacity-10 rounded-full blur-3xl transform group-hover:scale-150 transition-transform duration-500`} />
-      <div className="relative z-10">
-        <div className="flex items-center gap-3 mb-2">
-          <div className={`p-2 rounded-lg bg-gradient-to-br ${color} text-white`}>
-            {icon}
-          </div>
-          <h3 className="text-sm font-medium text-gray-400">{title}</h3>
-        </div>
-        <p className="text-3xl font-bold text-gray-100">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function ChartCard({ title, children }: { title: string, children: React.ReactNode }) {
-  return (
-    <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 shadow-xl h-80 flex flex-col hover:border-gray-600 transition-colors">
-      <h3 className="text-sm font-semibold text-gray-300 mb-4">{title}</h3>
-      <div className="flex-1 w-full min-h-0">
-        {children}
-      </div>
+      {stats && (
+        <footer className="grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5"><AlertTriangle aria-hidden="true" className="h-4 w-4 text-warning-600" /> SLA at risk: {stats.sla.amber_count + stats.sla.red_count}</div>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5"><CheckCircle2 aria-hidden="true" className="h-4 w-4 text-success-600" /> SLA compliance: {stats.sla_compliance_rate}%</div>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5"><Sparkles aria-hidden="true" className="h-4 w-4 text-brand-600" /> Today&apos;s AI cost: ${stats.today_llm_cost_usd.toFixed(4)}</div>
+        </footer>
+      )}
     </div>
   );
 }

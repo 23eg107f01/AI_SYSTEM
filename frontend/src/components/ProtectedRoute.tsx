@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { getStoredUser, isRole, AuthUser } from "../utils/auth";
+import { getStoredUser, isRole } from "../utils/auth";
 import React from "react";
+import PermissionDenied from "./PermissionDenied";
 
 interface ProtectedRouteProps {
   allowedRoles?: ("customer" | "agent" | "manager" | "admin")[];
@@ -15,17 +16,7 @@ export default function ProtectedRoute({ allowedRoles, children }: ProtectedRout
   }
 
   if (allowedRoles && !isRole(user, ...allowedRoles)) {
-    // Redirect based on role if unauthorized
-    if (user.role === "customer") {
-      return <Navigate to="/chat" replace />;
-    } else if (user.role === "agent") {
-      return <Navigate to="/agent" replace />;
-    } else if (user.role === "manager") {
-      return <Navigate to="/dashboard" replace />;
-    } else if (user.role === "admin") {
-      return <Navigate to="/admin" replace />;
-    }
-    return <Navigate to="/login" replace />;
+    return <PermissionDenied />;
   }
 
   return children ? <>{children}</> : <Outlet />;

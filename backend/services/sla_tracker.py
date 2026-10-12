@@ -32,14 +32,14 @@ async def sla_tracker_task():
                 ).all()
 
                 if red_tickets:
-                    logger.warning(f"SLA BREACH (RED): {len(red_tickets)} tickets open > {settings.SLA_RED_MINUTES}m")
+                    logger.warning("SLA BREACH (RED): %d tickets open > %dm", len(red_tickets), settings.SLA_RED_MINUTES)
                 
                 if amber_tickets:
-                    logger.info(f"SLA WARNING (AMBER): {len(amber_tickets)} tickets open > {settings.SLA_AMBER_MINUTES}m")
+                    logger.info("SLA WARNING (AMBER): %d tickets open > %dm", len(amber_tickets), settings.SLA_AMBER_MINUTES)
             finally:
                 db.close()
         except Exception as e:
-            logger.error(f"Error in SLA tracker: {e}")
+            logger.error("Error in SLA tracker: %s", e)
         
         await asyncio.sleep(60)
 
@@ -53,4 +53,4 @@ def start_sla_tracker():
         # No running event loop (e.g., Vercel serverless), skip starting SLA tracker
         logger.info("No running event loop, skipping SLA tracker (serverless environment).")
     except Exception as e:
-        logger.warning(f"Failed to start SLA tracker: {e}")
+        logger.warning("Failed to start SLA tracker: %s", e)

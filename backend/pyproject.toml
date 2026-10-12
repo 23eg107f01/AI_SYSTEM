@@ -1,7 +1,7 @@
 [project]
 name = "ai-customer-support-backend"
 version = "1.0.0"
-requires-python = "==3.12.*"
+requires-python = ">=3.11"
 dependencies = [
     # FastAPI + Server
     "fastapi==0.111.0",
@@ -22,8 +22,8 @@ dependencies = [
     # Redis
     "redis==5.0.4",
 
-    # ChromaDB (HTTP client only — no local embeddings on Vercel)
-    "chromadb-client==1.5.9",
+    # ChromaDB
+    "chromadb==1.5.9",
 
     # LLM - Groq
     "groq==0.9.0",

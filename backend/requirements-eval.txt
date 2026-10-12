@@ -1,0 +1,5 @@
+# Evaluation-only dependencies
+matplotlib
+ragas
+datasets
+requests
