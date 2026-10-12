@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, FormEvent } from "react";
-import Navbar from "../components/Navbar";
 import { AuthUser } from "../utils/auth";
 import api from "../utils/api";
+import { getApiErrorMessage } from "../utils/errorMessages";
 
 interface Props {
   user: AuthUser;
@@ -174,7 +174,7 @@ export default function ChatPage({ user }: Props) {
         initializedHistoryRef.current = true;
         setContactEmail((prev) => prev || me.email || "");
       } catch (err) {
-        console.error("Failed to bootstrap chat page", err);
+        setError(getApiErrorMessage(err, "We couldn't load your previous support conversations. Please try again."));
       }
     }
 
@@ -361,10 +361,7 @@ export default function ChatPage({ user }: Props) {
         )
       );
     } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Failed to send message. Please try again.";
-      setError(detail);
+      setError(getApiErrorMessage(err, "Failed to send message. Please try again."));
       setTickets((prev) => prev.filter((ticket) => ticket.id !== optimisticTicket.id));
     } finally {
       setLoading(false);
@@ -393,18 +390,17 @@ export default function ChatPage({ user }: Props) {
         )
       );
     } catch (err) {
-      console.error("Failed to submit feedback", err);
+      setError(getApiErrorMessage(err, "Feedback could not be saved. Please try again."));
     } finally {
       setFeedbackLoading(null);
     }
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#efeae2]">
-      <Navbar user={user} />
+    <div className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-[#efeae2]">
 
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 flex flex-col overflow-hidden">
-        <section className="bg-white rounded-t-3xl border border-slate-200 border-b-0 px-6 py-4 shadow-sm">
+      <main className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col overflow-hidden p-3 sm:p-4">
+        <section className="min-w-0 rounded-t-3xl border border-slate-200 border-b-0 bg-white px-4 py-4 shadow-sm sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-bold text-slate-900">Support Chat</h1>
@@ -423,17 +419,17 @@ export default function ChatPage({ user }: Props) {
               value={contactName}
               onChange={(e) => setContactName(e.target.value)}
               placeholder="Your name for manager handoff"
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-emerald-400"
+              className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-emerald-400"
             />
             <input
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
               placeholder="Your contact email"
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-emerald-400"
+              className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-emerald-400"
             />
           </div>
 
-          <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
+          <div className="mt-4 min-w-0 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-slate-800">Voice Assist</p>
@@ -454,7 +450,7 @@ export default function ChatPage({ user }: Props) {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-4">
+            <div className="mt-4 flex min-w-0 flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
@@ -510,7 +506,7 @@ export default function ChatPage({ user }: Props) {
           </div>
         </section>
 
-        <section className="flex-1 overflow-y-auto border-x border-slate-200 bg-[#e5ddd5] px-5 py-6 space-y-6">
+        <section className="min-h-0 flex-1 space-y-6 overflow-y-auto border-x border-slate-200 bg-[#e5ddd5] px-3 py-5 sm:px-5 sm:py-6">
           {tickets.length === 0 && !loading ? (
             <div className="mx-auto mt-20 max-w-md rounded-3xl bg-white/90 px-6 py-8 text-center shadow-sm">
               <p className="text-lg font-semibold text-slate-800">Start the conversation</p>
@@ -523,12 +519,12 @@ export default function ChatPage({ user }: Props) {
           {tickets.map((ticket) => (
             <div key={ticket.id} className="space-y-3">
               <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-3xl rounded-br-md bg-[#d9fdd3] px-5 py-3 shadow-sm">
-                  <p className="text-sm leading-6 text-slate-800">{ticket.message}</p>
+                <div className="max-w-[92%] min-w-0 rounded-3xl rounded-br-md bg-[#d9fdd3] px-4 py-3 shadow-sm sm:max-w-[80%] sm:px-5">
+                  <p className="break-words text-sm leading-6 text-slate-800">{ticket.message}</p>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pr-1 text-[11px]">
+              <div className="flex flex-wrap justify-end gap-2 pr-1 text-[11px]">
                 {ticket.category ? (
                   <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">
                     {ticket.category}
@@ -547,7 +543,7 @@ export default function ChatPage({ user }: Props) {
 
               {ticket.response ? (
                 <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-3xl rounded-bl-md bg-white px-5 py-4 shadow-sm">
+                  <div className="max-w-[94%] min-w-0 rounded-3xl rounded-bl-md bg-white px-4 py-4 shadow-sm sm:max-w-[85%] sm:px-5">
                     <div className="mb-2 flex items-center gap-2">
                       <span className="text-sm font-semibold text-slate-800">
                         {ticket.escalation ? "Support Manager" : "AI Support"}
@@ -563,7 +559,7 @@ export default function ChatPage({ user }: Props) {
                       </span>
                     </div>
 
-                    <p className="whitespace-pre-line text-sm leading-6 text-slate-700">
+                    <p className="break-words whitespace-pre-line text-sm leading-6 text-slate-700">
                       {ticket.response.response_text}
                     </p>
 

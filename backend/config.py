@@ -30,7 +30,10 @@ class Settings(BaseSettings):
     DAILY_BUDGET_USD: float = 20.00
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = (
+        "http://localhost:5173,http://localhost:3000,"
+        "http://127.0.0.1:5173,http://127.0.0.1:3000"
+    )
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 10

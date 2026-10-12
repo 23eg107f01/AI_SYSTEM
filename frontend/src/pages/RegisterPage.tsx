@@ -1,5 +1,8 @@
-import { useState, FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { AlertCircle, ArrowRight, CheckCircle2 } from "lucide-react";
+import { AuthLayout } from "../components/AuthLayout";
+import { Button, FormField, Input, PasswordInput } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 
 export default function RegisterPage() {
@@ -7,84 +10,94 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [success, setSuccess] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const navigate = useNavigate();
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const ok = await register(email, password, "customer");
+  const emailError = submitted && !email.trim() ? "Enter your email address." : undefined;
+  const passwordError = submitted && password.length < 8 ? "Use at least 8 characters." : undefined;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitted(true);
+    if (!email.trim() || password.length < 8) return;
+
+    const ok = await register(email.trim(), password, "customer");
     if (ok) {
       setSuccess(true);
-      setTimeout(() => navigate("/chat"), 1500);
+      window.setTimeout(() => navigate("/chat"), 1500);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Create account</h1>
-        <p className="text-sm text-gray-500 mb-6">Get support for your issue</p>
+    <AuthLayout mode="register">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-elevated sm:p-8">
+        <div className="mb-8">
+          <p className="mb-2 text-sm font-semibold text-brand-600">Get started with AI Support</p>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-950">Create your account</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Start managing customer support with more clarity and speed.</p>
+        </div>
 
         {success ? (
-          <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">
-            Account created! Redirecting to login…
+          <div role="status" aria-live="polite" className="rounded-xl border border-success-200 bg-success-50 p-4 text-sm text-success-700">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-semibold">Account created successfully</p>
+                <p className="mt-1">You&apos;re being signed in to your workspace.</p>
+              </div>
+            </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <FormField label="Email address" htmlFor="register-email" error={emailError} required>
+              <Input
+                id="register-email"
                 type="email"
                 required
                 autoComplete="email"
+                placeholder="you@company.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(event) => setEmail(event.target.value)}
+                error={Boolean(emailError)}
+                aria-describedby={emailError ? "register-email-error" : "register-email-description"}
               />
-            </div>
+            </FormField>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="password">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
+            <FormField label="Password" htmlFor="register-password" hint="Minimum 8 characters" error={passwordError} required>
+              <PasswordInput
+                id="register-password"
                 required
                 minLength={8}
                 autoComplete="new-password"
+                placeholder="Create a secure password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(event) => setPassword(event.target.value)}
+                error={Boolean(passwordError)}
+                aria-describedby={passwordError ? "register-password-error" : "register-password-description"}
               />
-              <p className="text-xs text-gray-400 mt-1">Minimum 8 characters</p>
-            </div>
+            </FormField>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                {error}
-              </p>
+              <div role="alert" aria-live="polite" className="flex gap-2.5 rounded-lg border border-error-200 bg-error-50 px-3.5 py-3 text-sm text-error-700">
+                <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm transition-colors"
-            >
+            <Button type="submit" fullWidth size="lg" loading={loading}>
               {loading ? "Creating account…" : "Create account"}
-            </button>
+              {!loading && <ArrowRight aria-hidden="true" className="h-4 w-4" />}
+            </Button>
           </form>
         )}
 
-        <p className="mt-4 text-center text-sm text-gray-500">
+        <p className="mt-7 text-center text-sm text-slate-600">
           Already have an account?{" "}
-          <Link to="/login" className="text-blue-600 hover:underline font-medium">
+          <Link to="/login" className="font-semibold text-brand-700 underline-offset-4 transition-interactive hover:text-brand-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
             Sign in
           </Link>
         </p>
       </div>
-    </div>
+    </AuthLayout>
   );
 }

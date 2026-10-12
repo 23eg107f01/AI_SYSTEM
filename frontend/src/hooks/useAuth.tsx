@@ -1,11 +1,29 @@
-import { useState } from "react";
+import { createContext, ReactNode, useContext, useState } from "react";
 import api from "../utils/api";
 import { saveTokens, clearTokens, getStoredUser, AuthUser } from "../utils/auth";
+import { getApiErrorMessage } from "../utils/errorMessages";
 
-export function useAuth() {
+interface AuthContextValue {
+  user: AuthUser | null;
+  error: string | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (email: string, password: string, role?: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+function useAuthState(): AuthContextValue {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  async function loadCurrentUser(): Promise<AuthUser> {
+    const { data } = await api.get<AuthUser>("/auth/me");
+    setUser(data);
+    return data;
+  }
 
   async function login(email: string, password: string): Promise<boolean> {
     setLoading(true);
@@ -13,14 +31,10 @@ export function useAuth() {
     try {
       const { data } = await api.post("/auth/login", { email, password });
       saveTokens(data.access_token, data.refresh_token);
-      const storedUser = getStoredUser();
-      setUser(storedUser);
+      await loadCurrentUser();
       return true;
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Login failed. Check your credentials.";
-      setError(msg);
+      setError(getApiErrorMessage(err, "Login failed. Check your credentials."));
       return false;
     } finally {
       setLoading(false);
@@ -35,21 +49,15 @@ export function useAuth() {
     setLoading(true);
     setError(null);
     try {
-      // Step 1: Register the user
       await api.post("/auth/register", { email, password, role });
-      
-      // Step 2: Immediately log them in
+
       const { data } = await api.post("/auth/login", { email, password });
       saveTokens(data.access_token, data.refresh_token);
-      const storedUser = getStoredUser();
-      setUser(storedUser);
-      
+      await loadCurrentUser();
+
       return true;
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Registration failed.";
-      setError(msg);
+      setError(getApiErrorMessage(err, "Registration failed."));
       return false;
     } finally {
       setLoading(false);
@@ -67,4 +75,16 @@ export function useAuth() {
   }
 
   return { user, error, loading, login, register, logout };
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  return <AuthContext.Provider value={useAuthState()}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }

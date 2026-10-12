@@ -25,10 +25,13 @@ export function getStoredUser(): AuthUser | null {
     return null;
   }
 
+  const role = payload.role as AuthUser["role"];
+  if (!payload.sub || !role) return null;
+
   return {
     id: Number(payload.sub),
-    email: payload.email as string ?? "",
-    role: payload.role as AuthUser["role"],
+    email: (payload.email as string) || "",
+    role,
   };
 }
 

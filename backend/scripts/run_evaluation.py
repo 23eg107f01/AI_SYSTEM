@@ -11,7 +11,7 @@ from datasets import Dataset
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.base import SessionLocal
 from models.user import User, UserRole
-from auth.security import create_access_token, get_password_hash
+from auth.security import create_access_token, hash_password
 from config import settings
 
 # Ragas imports
@@ -32,8 +32,7 @@ def get_or_create_test_token():
         if not user:
             user = User(
                 email="test_eval@example.com",
-                full_name="Test Eval",
-                hashed_password=get_password_hash("testpass123"),
+                hashed_password=hash_password("testpass123"),
                 role=UserRole.CUSTOMER
             )
             db.add(user)
@@ -41,8 +40,8 @@ def get_or_create_test_token():
             db.refresh(user)
         
         token = create_access_token(
-            data={"sub": user.email, "role": user.role.value},
-            expires_delta=timedelta(days=1)
+            user_id=user.id,
+            role=user.role.value
         )
         return token
     finally:
